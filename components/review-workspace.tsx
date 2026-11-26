@@ -142,9 +142,6 @@ export function ReviewWorkspace({ initialDetail, reviewers }: { initialDetail: R
             </div>
             <p>{detail.review.rationale}</p>
             <div className="reason-box"><strong>Escalation reason</strong><span>{detail.review.escalationReason}</span></div>
-            {finalRun?.finalDecision && "summary" in finalRun.finalDecision ? (
-              <p className="helper-text">Agent summary: {String(finalRun.finalDecision.summary)}</p>
-            ) : null}
           </section>
 
           <section className="panel">

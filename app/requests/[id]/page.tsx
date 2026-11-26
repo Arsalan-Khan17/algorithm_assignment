@@ -4,6 +4,7 @@ import { z } from "zod";
 import { StatusBadge } from "@/components/status-badge";
 import { StructuredData, toolLabel } from "@/components/structured-data";
 import { getSupportRequestDetail } from "@/src/repositories/support-repository";
+import { conciseDecisionSummary } from "@/src/presentation/decision-summary";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +23,7 @@ export default async function RequestTracePage({ params }: { params: Promise<{ i
       </header>
       <section className="panel">
         <p className="eyebrow">Final outcome</p>
-        <h2>{detail.request.outcomeSummary ?? "Processing"}</h2>
+        <h2>{conciseDecisionSummary(detail.request.outcomeSummary, "Processing")}</h2>
         <p>Order {detail.request.orderNumber ? `#${detail.request.orderNumber}` : "not linked"} · {detail.request.orderStatus ?? "unknown state"}</p>
       </section>
       <section className="panel">
@@ -33,7 +34,13 @@ export default async function RequestTracePage({ params }: { params: Promise<{ i
               <div><strong>{run.model}</strong><StatusBadge status={run.status} /></div>
               {run.errorMessage ? <p className="trace-error">{run.errorMessage}</p> : null}
               {run.finalDecision ? (
-                <StructuredData data={run.finalDecision} currency={detail.request.currency} />
+                <StructuredData
+                  data={{
+                    summary: conciseDecisionSummary(run.finalDecision.summary),
+                    turns: run.finalDecision.turns,
+                  }}
+                  currency={detail.request.currency}
+                />
               ) : null}
             </li>
           ))}

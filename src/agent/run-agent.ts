@@ -3,6 +3,7 @@ import { z } from "zod";
 import { db } from "@/src/db/client";
 import { agentRuns, supportRequests, toolCalls } from "@/src/db/schema";
 import { createReviewTask } from "@/src/domain/reviews/review-service";
+import { conciseDecisionSummary } from "@/src/presentation/decision-summary";
 import type { AgentModel, AgentToolOutput } from "./model";
 import { OpenAIResponsesModel } from "./model";
 import { AGENT_PROMPT_VERSION, SUPPORT_AGENT_INSTRUCTIONS } from "./prompt";
@@ -77,8 +78,10 @@ export async function processSupportRequest(
         .where(eq(agentRuns.id, run.id));
 
       if (turn.toolCalls.length === 0) {
+        const rawOutput = turn.outputText || "Agent completed without a textual summary.";
         const finalDecision = {
-          summary: turn.outputText || "Agent completed without a textual summary.",
+          summary: conciseDecisionSummary(rawOutput),
+          rawOutput,
           turns: turnNumber + 1,
         };
         await db

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import type { listDemoIdentities, listSupportRequests } from "@/src/repositories/support-repository";
 import type { Serialized } from "@/src/types/serialized";
+import { conciseDecisionSummary } from "@/src/presentation/decision-summary";
 import { StatusBadge } from "./status-badge";
 
 type QueueItem = Serialized<Awaited<ReturnType<typeof listSupportRequests>>[number]>;
@@ -156,7 +157,11 @@ export function SupportConsole({
                     <td>
                       <StatusBadge status={request.status} />
                       <span className="cell-secondary">
-                        {request.escalationReason ?? request.outcomeSummary ?? "Agent processing"}
+                        {conciseDecisionSummary(
+                          request.escalationReason ?? request.outcomeSummary,
+                          "Agent processing",
+                          140,
+                        )}
                       </span>
                     </td>
                     <td>{formatTime(request.updatedAt)}</td>
