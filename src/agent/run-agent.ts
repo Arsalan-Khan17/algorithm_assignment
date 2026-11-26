@@ -79,21 +79,49 @@ export async function processSupportRequest(
 
       if (turn.toolCalls.length === 0) {
         const rawOutput = turn.outputText || "Agent completed without a textual summary.";
+        const [currentRequest] = await db
+          .select({ status: supportRequests.status })
+          .from(supportRequests)
+          .where(eq(supportRequests.id, request.id));
+
+        let summary = conciseDecisionSummary(rawOutput);
+        let boundaryCode: string | undefined;
+
+        if (currentRequest.status === "running") {
+          boundaryCode = "VERIFIED_SUPPORT_OUTCOME_REQUIRED";
+          summary = "Escalated because the agent did not select a verified support action.";
+          await createReviewTask({
+            supportRequestId: request.id,
+            actionType: "manual_review",
+            proposedPayload: { requestedAction: "manual_review" },
+            rationale:
+              "The model returned text without completing a supported action or explicit escalation.",
+            evidence: {
+              agentRunId: run.id,
+              providerResponseId: turn.responseId,
+              boundaryCode,
+            },
+            escalationReason:
+              "No verified ecommerce support outcome was selected; manual review is required.",
+          });
+        }
+
         const finalDecision = {
-          summary: conciseDecisionSummary(rawOutput),
+          summary,
           rawOutput,
           turns: turnNumber + 1,
+          ...(boundaryCode ? { boundaryCode } : {}),
         };
         await db
           .update(agentRuns)
           .set({ status: "completed", finalDecision, completedAt: sql`now()` })
           .where(eq(agentRuns.id, run.id));
 
-        const [currentRequest] = await db
+        const [resolvedRequest] = await db
           .select({ status: supportRequests.status })
           .from(supportRequests)
           .where(eq(supportRequests.id, request.id));
-        if (currentRequest.status === "running") {
+        if (resolvedRequest.status === "running") {
           await db
             .update(supportRequests)
             .set({

@@ -317,4 +317,50 @@ describe("guarded actions against PostgreSQL", () => {
     expect(review).toMatchObject({ actionType: "refund", status: "pending" });
     expect(request.status).toBe("needs_review");
   });
+
+  it("escalates a tool-free general answer instead of accepting it as an outcome", async () => {
+    const fixture = await createFixture();
+    await db
+      .update(supportRequests)
+      .set({ message: "What is Python?" })
+      .where(eq(supportRequests.id, fixture.requestIds[0]));
+
+    const model = new ScriptedAgentModel([
+      {
+        responseId: "response_general_knowledge",
+        outputText: "Python is a general-purpose programming language.",
+        toolCalls: [],
+      },
+    ]);
+
+    const result = await processSupportRequest(fixture.requestIds[0], model);
+    const [run] = await db.select().from(agentRuns).where(eq(agentRuns.id, result.runId));
+    const calls = await db.select().from(toolCalls).where(eq(toolCalls.agentRunId, result.runId));
+    const [review] = await db
+      .select()
+      .from(reviewTasks)
+      .where(eq(reviewTasks.supportRequestId, fixture.requestIds[0]));
+    const [request] = await db
+      .select()
+      .from(supportRequests)
+      .where(eq(supportRequests.id, fixture.requestIds[0]));
+
+    expect(calls).toHaveLength(0);
+    expect(run.finalDecision).toMatchObject({
+      summary: "Escalated because the agent did not select a verified support action.",
+      rawOutput: "Python is a general-purpose programming language.",
+      boundaryCode: "VERIFIED_SUPPORT_OUTCOME_REQUIRED",
+    });
+    expect(review).toMatchObject({
+      actionType: "manual_review",
+      status: "pending",
+      escalationReason:
+        "No verified ecommerce support outcome was selected; manual review is required.",
+    });
+    expect(request).toMatchObject({
+      status: "needs_review",
+      outcomeSummary:
+        "No verified ecommerce support outcome was selected; manual review is required.",
+    });
+  });
 });
