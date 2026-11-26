@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { AgentFunctionDefinition } from "./model";
 import { db } from "@/src/db/client";
@@ -25,6 +25,14 @@ const escalationInput = z.object({
   reason: z.string().trim().min(3).max(500),
   summary: z.string().trim().min(3).max(1_000),
   orderNumber: z.number().int().positive().nullable(),
+});
+const informationInput = z.object({
+  reason: z.string().trim().min(3).max(500),
+  missingFields: z.array(z.enum(["order_number"])).min(1).max(1),
+});
+const refusalInput = z.object({
+  code: z.enum(["OUT_OF_SCOPE", "UNSUPPORTED_REQUEST"]),
+  reason: z.string().trim().min(3).max(500),
 });
 
 export const agentToolDefinitions: AgentFunctionDefinition[] = [
@@ -73,8 +81,46 @@ export const agentToolDefinitions: AgentFunctionDefinition[] = [
   },
   {
     type: "function",
+    name: "request_information",
+    description:
+      "Request missing or unambiguous information needed for a supported ecommerce action. Use this when an order number is absent or ambiguous.",
+    strict: true,
+    parameters: {
+      type: "object",
+      properties: {
+        reason: { type: "string" },
+        missingFields: {
+          type: "array",
+          items: { type: "string", enum: ["order_number"] },
+          minItems: 1,
+          maxItems: 1,
+        },
+      },
+      required: ["reason", "missingFields"],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "refuse_request",
+    description:
+      "Refuse an unrelated or unsupported request without answering it or creating a financial review.",
+    strict: true,
+    parameters: {
+      type: "object",
+      properties: {
+        code: { type: "string", enum: ["OUT_OF_SCOPE", "UNSUPPORTED_REQUEST"] },
+        reason: { type: "string" },
+      },
+      required: ["code", "reason"],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
     name: "escalate_to_human",
-    description: "Create a human review when no safe supported action can be selected.",
+    description:
+      "Create a human review for an identified ecommerce case that cannot be resolved safely by another tool.",
     strict: true,
     parameters: {
       type: "object",
@@ -102,6 +148,38 @@ async function linkOrderToRequest(supportRequestId: string, orderId: string) {
     .where(eq(supportRequests.id, supportRequestId));
 }
 
+async function resolveWithoutAction(
+  context: AgentToolContext,
+  status: "needs_information" | "refused",
+  outcomeSummary: string,
+) {
+  await db
+    .update(supportRequests)
+    .set({
+      status,
+      outcomeSummary,
+      updatedAt: new Date(),
+      version: sql`${supportRequests.version} + 1`,
+    })
+    .where(
+      and(
+        eq(supportRequests.id, context.supportRequestId),
+        eq(supportRequests.status, "running"),
+      ),
+    );
+}
+
+async function refuseMissingOrder(context: AgentToolContext) {
+  const reason = "No matching order was found for this customer. No action was taken.";
+  await resolveWithoutAction(context, "refused", reason);
+  return {
+    accepted: false,
+    outcome: "refused",
+    code: "ORDER_NOT_FOUND_OR_NOT_OWNED",
+    reason,
+  };
+}
+
 async function findOrder(context: AgentToolContext, orderNumber: number) {
   const order = await getOrderForCustomer(context.customerId, orderNumber);
   if (order) {
@@ -115,33 +193,38 @@ export async function executeAgentTool(
   name: string,
   rawArguments: unknown,
 ): Promise<Record<string, unknown>> {
+  const [currentRequest] = await db
+    .select({ status: supportRequests.status, outcomeSummary: supportRequests.outcomeSummary })
+    .from(supportRequests)
+    .where(eq(supportRequests.id, context.supportRequestId))
+    .limit(1);
+
+  if (!currentRequest || currentRequest.status !== "running") {
+    return {
+      accepted: false,
+      outcome: "already_resolved",
+      status: currentRequest?.status ?? "missing",
+      reason: currentRequest?.outcomeSummary ?? "The support request is no longer actionable.",
+    };
+  }
+
   if (name === "lookup_order") {
     const input = lookupOrderInput.parse(rawArguments);
     const order = await findOrder(context, input.orderNumber);
-    return order
-      ? { found: true, order }
-      : { found: false, code: "ORDER_NOT_FOUND_OR_NOT_OWNED" };
+    return order ? { found: true, order } : { found: false, ...(await refuseMissingOrder(context)) };
   }
 
   if (name === "propose_refund") {
     const input = refundInput.parse(rawArguments);
     const order = await findOrder(context, input.orderNumber);
     if (!order) {
-      return { accepted: false, code: "ORDER_NOT_FOUND_OR_NOT_OWNED" };
+      return refuseMissingOrder(context);
     }
 
     const policy = evaluateRefundPolicy(order, input.amountCents);
     if (policy.outcome === "refuse") {
-      await createReviewTask({
-        supportRequestId: context.supportRequestId,
-        orderId: order.orderId,
-        actionType: "manual_review",
-        proposedPayload: { requestedAction: "refund", ...input },
-        rationale: policy.reason,
-        evidence: { order, policyCode: policy.code },
-        escalationReason: `Unsafe refund proposal: ${policy.reason}`,
-      });
-      return { accepted: false, escalated: true, code: policy.code, reason: policy.reason };
+      await resolveWithoutAction(context, "refused", policy.reason);
+      return { accepted: false, outcome: "refused", code: policy.code, reason: policy.reason };
     }
 
     const review = await createReviewTask({
@@ -169,21 +252,13 @@ export async function executeAgentTool(
     const input = cancellationInput.parse(rawArguments);
     const order = await findOrder(context, input.orderNumber);
     if (!order) {
-      return { accepted: false, code: "ORDER_NOT_FOUND_OR_NOT_OWNED" };
+      return refuseMissingOrder(context);
     }
 
     const policy = evaluateCancellationPolicy(order);
     if (policy.outcome === "refuse") {
-      await createReviewTask({
-        supportRequestId: context.supportRequestId,
-        orderId: order.orderId,
-        actionType: "manual_review",
-        proposedPayload: { requestedAction: "cancel", ...input },
-        rationale: policy.reason,
-        evidence: { order, policyCode: policy.code },
-        escalationReason: `Cancellation cannot be executed: ${policy.reason}`,
-      });
-      return { accepted: false, escalated: true, code: policy.code, reason: policy.reason };
+      await resolveWithoutAction(context, "refused", policy.reason);
+      return { accepted: false, outcome: "refused", code: policy.code, reason: policy.reason };
     }
 
     if (policy.outcome === "execute") {
@@ -223,6 +298,23 @@ export async function executeAgentTool(
       reviewTaskId: review.id,
       reason: policy.reason,
     };
+  }
+
+  if (name === "request_information") {
+    const input = informationInput.parse(rawArguments);
+    await resolveWithoutAction(context, "needs_information", input.reason);
+    return {
+      accepted: true,
+      outcome: "needs_information",
+      missingFields: input.missingFields,
+      reason: input.reason,
+    };
+  }
+
+  if (name === "refuse_request") {
+    const input = refusalInput.parse(rawArguments);
+    await resolveWithoutAction(context, "refused", input.reason);
+    return { accepted: true, outcome: "refused", code: input.code, reason: input.reason };
   }
 
   if (name === "escalate_to_human") {

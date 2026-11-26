@@ -5,9 +5,9 @@ export function StatusBadge({ status }: { status: string }) {
   return (
     <span
       className={clsx("badge", {
-        "badge-review": status === "needs_review" || status === "pending",
+        "badge-review": ["needs_review", "needs_information", "pending"].includes(status),
         "badge-success": ["completed", "executed", "auto_executed", "succeeded"].includes(status),
-        "badge-danger": ["failed", "conflicted", "rejected"].includes(status),
+        "badge-danger": ["failed", "conflicted", "rejected", "refused"].includes(status),
         "badge-neutral": ["queued", "running", "requested"].includes(status),
       })}
     >

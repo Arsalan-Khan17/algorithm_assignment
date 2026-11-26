@@ -38,6 +38,23 @@ describe("deterministic action policy", () => {
     });
   });
 
+  it("refuses an already-refunded order before a review is created", () => {
+    expect(
+      evaluateRefundPolicy(
+        order({
+          status: "refunded",
+          payment: {
+            ...order().payment,
+            status: "refunded",
+            refundedAmountCents: 10_000,
+            hasRefundRecord: true,
+          },
+        }),
+        10_000,
+      ),
+    ).toMatchObject({ outcome: "refuse", code: "REFUND_ALREADY_EXISTS" });
+  });
+
   it("permits autonomous cancellation only before fulfilment with authorized funds", () => {
     const safeOrder = order({
       status: "pending",

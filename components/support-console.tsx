@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { ArrowRight, Bot, CheckCircle2, CircleAlert, Zap } from "lucide-react";
+import { ArrowRight, Bot, CheckCircle2, CircleAlert, MessageCircleQuestion, Zap } from "lucide-react";
 import type { listDemoIdentities, listSupportRequests } from "@/src/repositories/support-repository";
 import type { Serialized } from "@/src/types/serialized";
 import { conciseDecisionSummary } from "@/src/presentation/decision-summary";
@@ -11,7 +11,15 @@ import { StatusBadge } from "./status-badge";
 type QueueItem = Serialized<Awaited<ReturnType<typeof listSupportRequests>>[number]>;
 type Identities = Serialized<Awaited<ReturnType<typeof listDemoIdentities>>>;
 
-const filters = ["all", "needs_review", "auto_executed", "completed", "failed"] as const;
+const filters = [
+  "all",
+  "needs_review",
+  "needs_information",
+  "auto_executed",
+  "refused",
+  "completed",
+  "failed",
+] as const;
 
 function formatTime(value: string) {
   return new Intl.DateTimeFormat("en", {
@@ -58,9 +66,12 @@ export function SupportConsole({
     () => ({
       all: requests.length,
       needs_review: requests.filter((request) => request.status === "needs_review").length,
+      needs_information: requests.filter((request) => request.status === "needs_information").length,
       auto_executed: requests.filter((request) => request.status === "auto_executed").length,
+      refused: requests.filter((request) => request.status === "refused").length,
       completed: requests.filter((request) => request.status === "completed").length,
       failed: requests.filter((request) => request.status === "failed").length,
+      resolved: requests.filter((request) => ["completed", "refused"].includes(request.status)).length,
     }),
     [requests],
   );
@@ -145,12 +156,16 @@ export function SupportConsole({
             <dd>{queueCounts.needs_review}</dd>
           </div>
           <div className="summary-item">
+            <dt><MessageCircleQuestion size={16} strokeWidth={1.6} aria-hidden="true" />Needs information</dt>
+            <dd>{queueCounts.needs_information}</dd>
+          </div>
+          <div className="summary-item">
             <dt><Zap size={16} strokeWidth={1.6} aria-hidden="true" />Auto executed</dt>
             <dd>{queueCounts.auto_executed}</dd>
           </div>
           <div className="summary-item">
             <dt><CheckCircle2 size={16} strokeWidth={1.6} aria-hidden="true" />Resolved</dt>
-            <dd>{queueCounts.completed}</dd>
+            <dd>{queueCounts.resolved}</dd>
           </div>
         </dl>
 

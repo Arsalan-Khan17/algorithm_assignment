@@ -17,6 +17,7 @@ const fieldLabels: Record<string, string> = {
   paymentStatus: "Payment status",
   policyCode: "Policy decision",
   reason: "Reason",
+  missingFields: "Information needed",
   refundedAmountCents: "Already refunded",
   requestedAction: "Requested action",
   reviewTaskId: "Review task ID",
@@ -31,6 +32,8 @@ const toolLabels: Record<string, string> = {
   lookup_order: "Looked up the order",
   propose_refund: "Proposed a refund",
   request_cancellation: "Requested cancellation",
+  request_information: "Requested more information",
+  refuse_request: "Refused an unsupported request",
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {

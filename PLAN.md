@@ -130,7 +130,7 @@ This plan is the working checklist for the assessment. A box is checked only aft
 - [x] Run all unit and integration tests.
 - [x] Run the production build.
 - [x] Run a live local OpenAI smoke test and verify persisted model-selected tool calls.
-- [x] Regression test: a tool-free general-knowledge answer is replaced by a manual-review escalation.
+- [x] Regression tests: missing information, unknown/unowned orders, policy failures, and out-of-scope requests resolve without creating approval tasks.
 
 Optional coverage beyond the assessment requirements:
 

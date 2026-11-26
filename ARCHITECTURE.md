@@ -14,7 +14,7 @@ This is intentionally one deployable service. The domain, agent, persistence, an
 
 ## Agent boundary
 
-The agent can autonomously retrieve a customer-scoped order, summarize relevant facts, create an escalation, and request an action. It can automatically cancel only an untouched `pending` order whose payment is still `authorized`. This operation voids the authorization and changes the order to `cancelled` in one transaction.
+The agent can autonomously retrieve a customer-scoped order, summarize relevant facts, request missing information, refuse unsupported or unsafe requests, create an escalation, and request an action. It can automatically cancel only an untouched `pending` order whose payment is still `authorized`. This operation voids the authorization and changes the order to `cancelled` in one transaction.
 
 Every refund requires a human reviewer. A cancellation also requires review once fulfilment has started or funds have been captured. Shipped orders, over-refunds, duplicate refunds, ownership mismatches, and invalid states are refused.
 
@@ -26,7 +26,7 @@ This boundary is enforced outside the prompt in three layers:
 
 Prompts improve model behavior but are not an authorization mechanism. There is no public unrestricted refund or cancellation endpoint.
 
-The model's prose is not a terminal outcome either. A run may complete normally only after a tool has moved the persisted request out of `running` into a verified business state such as `needs_review` or `auto_executed`. If the model answers directly, or only performs a lookup and then stops, `src/agent/run-agent.ts` discards that prose as the displayed decision and creates a `manual_review` task with `VERIFIED_SUPPORT_OUTCOME_REQUIRED`. This code-enforced boundary prevents the console from becoming a general chatbot even when the model ignores its instructions; the raw provider output remains available in the agent-run audit record.
+The model's prose is not a terminal outcome either. A run may complete normally only after a tool has moved the persisted request out of `running` into a verified business state: `needs_review`, `needs_information`, `refused`, or `auto_executed`. Missing or ambiguous order identifiers use `needs_information`; deterministic policy, ownership, lookup, and scope failures use `refused`; neither creates an approval task. If the model answers directly, or only performs a successful lookup and then stops, `src/agent/run-agent.ts` discards that prose as the displayed decision and creates a `manual_review` task with `VERIFIED_SUPPORT_OUTCOME_REQUIRED`. The raw provider output remains available in the agent-run audit record.
 
 Demo customer identity is selected in the UI and sent to the support-request API to make scenarios reproducible. The identity is then fixed on the request and injected into tools server-side; the model never supplies it. In production the same field would come from an authenticated customer session, not request JSON.
 
@@ -39,7 +39,9 @@ Tools are deliberately narrow:
 - `lookup_order(orderNumber)` returns a limited order/payment snapshot. Customer ID is injected from the persisted request. A foreign and missing order produce the same result.
 - `propose_refund(orderNumber, amountCents, reason)` performs preflight policy checks and creates a review; it never moves money.
 - `request_cancellation(orderNumber, reason)` lets policy decide between a safe automatic cancellation and review.
-- `escalate_to_human(reason, summary, orderNumber)` creates a manual review when intent or support is insufficient.
+- `request_information(reason, missingFields)` records a non-approval follow-up state for missing or ambiguous identifiers.
+- `refuse_request(code, reason)` records a constrained refusal for out-of-scope or unsupported requests.
+- `escalate_to_human(reason, summary, orderNumber)` creates a manual review only for identified ecommerce cases that still require judgment.
 
 The model sees order status, timestamps, captured/refunded minor-unit amounts, and currency. It does not see arbitrary customer records, payment credentials, provider tokens, reviewer records, or a database handle. Money is represented as integer cents.
 
@@ -65,14 +67,15 @@ Approval repeats all checks against locked current rows. The evidence shown by t
 
 ## Failure handling
 
-- **Hallucinated order ID:** the customer-scoped lookup returns `ORDER_NOT_FOUND_OR_NOT_OWNED`; no mutation path receives a usable order.
-- **Someone else's order:** every read and guarded command includes the persisted request customer ID. The response does not reveal whether the order exists for another customer.
+- **Hallucinated order ID:** customer-scoped lookup returns `ORDER_NOT_FOUND_OR_NOT_OWNED`, persists `refused`, and creates no review. No mutation path receives a usable order.
+- **Missing or ambiguous order number:** `request_information` persists `needs_information`; it never creates an approvable financial action.
+- **Someone else's order:** every read and guarded command includes the persisted request customer ID. It receives the same persisted refusal as a missing order and never reveals whether the order exists for another customer.
 - **Refund exceeds payment:** policy refuses it, and the transactional command independently raises `REFUND_EXCEEDS_PAYMENT`. A payment check constraint is the last defense.
 - **Already refunded:** the locked payment state and refund row are checked; the unique index prevents a race.
 - **Shipped cancellation:** the command rejects shipped/delivered states and non-null `shipped_at`; the conditional update repeats the predicate.
 - **Stale reviewer:** expected version and row status return `409` with current state.
 - **Model/API failure:** the run is stored as failed and the request becomes a visible manual review. The customer request is persisted before the model is called.
-- **Unsupported/general question:** the model is instructed to call `escalate_to_human`. If it instead returns a general answer without a verified support outcome, the application replaces that answer with a manual-review escalation.
+- **Unsupported/general question:** constrained `refuse_request` persists `refused` without answering the question or creating a financial review. If the model ignores the tool boundary and returns prose directly, the application suppresses that prose and creates a safe manual fallback.
 - **Repeated provider call ID:** `(agent_run_id, provider_call_id)` is unique. A completed result is replayed instead of executing again.
 - **External payment failure:** this assessment uses a local financial ledger. A production provider call would use the action execution ID as its idempotency key and an outbox/reconciliation workflow.
 

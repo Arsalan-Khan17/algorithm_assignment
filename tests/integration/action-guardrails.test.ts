@@ -318,6 +318,182 @@ describe("guarded actions against PostgreSQL", () => {
     expect(request.status).toBe("needs_review");
   });
 
+  it("requests information without creating an approval task when the order number is missing", async () => {
+    const fixture = await createFixture();
+    await db
+      .update(supportRequests)
+      .set({ message: "Please cancel my order." })
+      .where(eq(supportRequests.id, fixture.requestIds[0]));
+
+    const model = new ScriptedAgentModel([
+      {
+        responseId: "response_information",
+        outputText: "",
+        toolCalls: [
+          {
+            callId: "call_information",
+            name: "request_information",
+            arguments: JSON.stringify({
+              reason: "Please provide the order number so the order can be verified.",
+              missingFields: ["order_number"],
+            }),
+          },
+        ],
+      },
+      {
+        responseId: "response_information_final",
+        outputText: "Please provide the order number so the cancellation can be checked.",
+        toolCalls: [],
+      },
+    ]);
+
+    await processSupportRequest(fixture.requestIds[0], model);
+    const [request] = await db
+      .select()
+      .from(supportRequests)
+      .where(eq(supportRequests.id, fixture.requestIds[0]));
+    const reviews = await db
+      .select()
+      .from(reviewTasks)
+      .where(eq(reviewTasks.supportRequestId, fixture.requestIds[0]));
+
+    expect(request).toMatchObject({
+      status: "needs_information",
+      outcomeSummary: "Please provide the order number so the order can be verified.",
+    });
+    expect(reviews).toHaveLength(0);
+  });
+
+  it("refuses an unknown or unowned order without creating an approval task", async () => {
+    const fixture = await createFixture();
+    const unknownOrderNumber = fixture.orderNumber + 10_000_000;
+    await db
+      .update(supportRequests)
+      .set({ orderId: null, message: `Refund order ${unknownOrderNumber}` })
+      .where(eq(supportRequests.id, fixture.requestIds[0]));
+    const model = new ScriptedAgentModel([
+      {
+        responseId: "response_missing_order",
+        outputText: "",
+        toolCalls: [
+          {
+            callId: "call_missing_order",
+            name: "lookup_order",
+            arguments: JSON.stringify({ orderNumber: unknownOrderNumber }),
+          },
+        ],
+      },
+      {
+        responseId: "response_missing_order_final",
+        outputText: "No matching order was found for this customer. No action was taken.",
+        toolCalls: [],
+      },
+    ]);
+
+    await processSupportRequest(fixture.requestIds[0], model);
+    const [request] = await db
+      .select()
+      .from(supportRequests)
+      .where(eq(supportRequests.id, fixture.requestIds[0]));
+    const reviews = await db
+      .select()
+      .from(reviewTasks)
+      .where(eq(reviewTasks.supportRequestId, fixture.requestIds[0]));
+
+    expect(request.status).toBe("refused");
+    expect(request.orderId).toBeNull();
+    expect(reviews).toHaveLength(0);
+  });
+
+  it("refuses a policy-invalid cancellation without creating an approval task", async () => {
+    const fixture = await createFixture({ orderStatus: "shipped", shippedAt: new Date() });
+    const model = new ScriptedAgentModel([
+      {
+        responseId: "response_unsafe_cancel",
+        outputText: "",
+        toolCalls: [
+          {
+            callId: "call_unsafe_cancel",
+            name: "request_cancellation",
+            arguments: JSON.stringify({
+              orderNumber: fixture.orderNumber,
+              reason: "Customer requested cancellation",
+            }),
+          },
+        ],
+      },
+      {
+        responseId: "response_unsafe_cancel_final",
+        outputText: "The order has already shipped and cannot be cancelled.",
+        toolCalls: [],
+      },
+    ]);
+
+    await processSupportRequest(fixture.requestIds[0], model);
+    const [request] = await db
+      .select()
+      .from(supportRequests)
+      .where(eq(supportRequests.id, fixture.requestIds[0]));
+    const reviews = await db
+      .select()
+      .from(reviewTasks)
+      .where(eq(reviewTasks.supportRequestId, fixture.requestIds[0]));
+
+    expect(request).toMatchObject({ status: "refused", outcomeSummary: "Order has already shipped." });
+    expect(reviews).toHaveLength(0);
+  });
+
+  it("refuses an out-of-scope request without answering it or creating a review", async () => {
+    const fixture = await createFixture();
+    await db
+      .update(supportRequests)
+      .set({ message: "What is Python?" })
+      .where(eq(supportRequests.id, fixture.requestIds[0]));
+
+    const model = new ScriptedAgentModel([
+      {
+        responseId: "response_refusal",
+        outputText: "",
+        toolCalls: [
+          {
+            callId: "call_refusal",
+            name: "refuse_request",
+            arguments: JSON.stringify({
+              code: "OUT_OF_SCOPE",
+              reason: "This console only handles ecommerce order support requests.",
+            }),
+          },
+        ],
+      },
+      {
+        responseId: "response_refusal_final",
+        outputText: "Python is a general-purpose programming language.",
+        toolCalls: [],
+      },
+    ]);
+
+    const result = await processSupportRequest(fixture.requestIds[0], model);
+    const [request] = await db
+      .select()
+      .from(supportRequests)
+      .where(eq(supportRequests.id, fixture.requestIds[0]));
+    const [run] = await db.select().from(agentRuns).where(eq(agentRuns.id, result.runId));
+    const reviews = await db
+      .select()
+      .from(reviewTasks)
+      .where(eq(reviewTasks.supportRequestId, fixture.requestIds[0]));
+
+    expect(request).toMatchObject({
+      status: "refused",
+      outcomeSummary: "This console only handles ecommerce order support requests.",
+    });
+    expect(run.finalDecision).toMatchObject({
+      summary: "This console only handles ecommerce order support requests.",
+      rawOutput: "Python is a general-purpose programming language.",
+    });
+    expect(reviews).toHaveLength(0);
+  });
+
   it("escalates a tool-free general answer instead of accepting it as an outcome", async () => {
     const fixture = await createFixture();
     await db

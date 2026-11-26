@@ -33,6 +33,8 @@ export const supportRequestStatus = pgEnum("support_request_status", [
   "queued",
   "running",
   "needs_review",
+  "needs_information",
+  "refused",
   "auto_executed",
   "completed",
   "failed",

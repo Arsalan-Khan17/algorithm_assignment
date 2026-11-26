@@ -1,0 +1,2 @@
+ALTER TYPE "public"."support_request_status" ADD VALUE 'needs_information' BEFORE 'auto_executed';--> statement-breakpoint
+ALTER TYPE "public"."support_request_status" ADD VALUE 'refused' BEFORE 'auto_executed';

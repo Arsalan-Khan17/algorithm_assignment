@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Bot, CheckCircle2, Wrench } from "lucide-react";
+import { ArrowLeft, Ban, Bot, CheckCircle2, MessageCircleQuestion, Wrench } from "lucide-react";
 import { z } from "zod";
 import { StatusBadge } from "@/components/status-badge";
 import { StructuredData, toolLabel } from "@/components/structured-data";
@@ -14,6 +14,18 @@ export default async function RequestTracePage({ params }: { params: Promise<{ i
   if (!z.string().uuid().safeParse(id).success) notFound();
   const detail = await getSupportRequestDetail(id);
   if (!detail) notFound();
+  const outcomeKind =
+    detail.request.status === "refused"
+      ? "refused"
+      : detail.request.status === "needs_information"
+        ? "information"
+        : "success";
+  const OutcomeIcon =
+    outcomeKind === "refused"
+      ? Ban
+      : outcomeKind === "information"
+        ? MessageCircleQuestion
+        : CheckCircle2;
 
   return (
     <main className="shell detail-shell">
@@ -33,9 +45,9 @@ export default async function RequestTracePage({ params }: { params: Promise<{ i
       </header>
 
       <div className="evidence-flow">
-        <section className="panel evidence-step outcome-panel">
-          <span className="evidence-node evidence-node-success" aria-hidden="true">
-            <CheckCircle2 size={17} strokeWidth={1.8} />
+        <section className={`panel evidence-step outcome-panel outcome-panel-${outcomeKind}`}>
+          <span className={`evidence-node evidence-node-${outcomeKind}`} aria-hidden="true">
+            <OutcomeIcon size={17} strokeWidth={1.8} />
           </span>
           <div className="panel-heading">
             <div>

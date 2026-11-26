@@ -80,7 +80,10 @@ export async function processSupportRequest(
       if (turn.toolCalls.length === 0) {
         const rawOutput = turn.outputText || "Agent completed without a textual summary.";
         const [currentRequest] = await db
-          .select({ status: supportRequests.status })
+          .select({
+            status: supportRequests.status,
+            outcomeSummary: supportRequests.outcomeSummary,
+          })
           .from(supportRequests)
           .where(eq(supportRequests.id, request.id));
 
@@ -104,6 +107,8 @@ export async function processSupportRequest(
             escalationReason:
               "No verified ecommerce support outcome was selected; manual review is required.",
           });
+        } else if (currentRequest.outcomeSummary) {
+          summary = conciseDecisionSummary(currentRequest.outcomeSummary);
         }
 
         const finalDecision = {
