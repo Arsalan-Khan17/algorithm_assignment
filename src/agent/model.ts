@@ -23,6 +23,7 @@ export type AgentTurn = {
 export type AgentTurnInput = {
   instructions: string;
   requestMessage?: string;
+  continuationMessage?: string;
   previousResponseId?: string;
   toolOutputs?: AgentToolOutput[];
   tools: AgentFunctionDefinition[];
@@ -45,11 +46,13 @@ export class OpenAIResponsesModel implements AgentModel {
 
   async createTurn(input: AgentTurnInput): Promise<AgentTurn> {
     const responseInput: string | ResponseInputItem[] = input.previousResponseId
-      ? (input.toolOutputs ?? []).map((toolOutput) => ({
-          type: "function_call_output" as const,
-          call_id: toolOutput.callId,
-          output: JSON.stringify(toolOutput.output),
-        }))
+      ? input.toolOutputs?.length
+        ? input.toolOutputs.map((toolOutput) => ({
+            type: "function_call_output" as const,
+            call_id: toolOutput.callId,
+            output: JSON.stringify(toolOutput.output),
+          }))
+        : (input.continuationMessage ?? "Continue to a verified terminal support outcome.")
       : (input.requestMessage ?? "");
 
     const response = await this.client.responses.create(

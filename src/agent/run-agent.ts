@@ -58,6 +58,7 @@ export async function processSupportRequest(
 
   let previousResponseId: string | undefined;
   let toolOutputs: AgentToolOutput[] | undefined;
+  let continuationMessage: string | undefined;
   let sequence = 0;
 
   try {
@@ -66,12 +67,14 @@ export async function processSupportRequest(
       const turn = await model.createTurn({
         instructions: SUPPORT_AGENT_INSTRUCTIONS,
         requestMessage: previousResponseId ? undefined : request.message,
+        continuationMessage,
         previousResponseId,
         toolOutputs,
         tools: agentToolDefinitions,
       });
 
       previousResponseId = turn.responseId;
+      continuationMessage = undefined;
       await db
         .update(agentRuns)
         .set({ providerResponseId: turn.responseId })
@@ -91,6 +94,13 @@ export async function processSupportRequest(
         let boundaryCode: string | undefined;
 
         if (currentRequest.status === "running") {
+          if (sequence > 0 && turnNumber < MAX_AGENT_TURNS - 1) {
+            continuationMessage =
+              "A lookup or failed tool call is not a terminal outcome. Call the guarded action, request-information, refusal, or escalation tool that definitively resolves this request.";
+            toolOutputs = undefined;
+            continue;
+          }
+
           boundaryCode = "VERIFIED_SUPPORT_OUTCOME_REQUIRED";
           summary = "Escalated because the agent did not select a verified support action.";
           await createReviewTask({

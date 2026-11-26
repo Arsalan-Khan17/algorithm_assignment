@@ -443,6 +443,76 @@ describe("guarded actions against PostgreSQL", () => {
     expect(reviews).toHaveLength(0);
   });
 
+  it("continues a lookup-only turn until an already-refunded request is refused", async () => {
+    const fixture = await createFixture();
+    await db.update(orders).set({ status: "refunded" }).where(eq(orders.id, fixture.orderId));
+    await db
+      .update(payments)
+      .set({ status: "refunded", refundedAmountCents: 10_000 })
+      .where(eq(payments.id, fixture.paymentId));
+
+    const model = new ScriptedAgentModel([
+      {
+        responseId: "response_refunded_lookup",
+        outputText: "",
+        toolCalls: [
+          {
+            callId: "call_refunded_lookup",
+            name: "lookup_order",
+            arguments: JSON.stringify({ orderNumber: fixture.orderNumber }),
+          },
+        ],
+      },
+      {
+        responseId: "response_refunded_incomplete",
+        outputText: "This order was already refunded.",
+        toolCalls: [],
+      },
+      {
+        responseId: "response_refunded_policy",
+        outputText: "",
+        toolCalls: [
+          {
+            callId: "call_refunded_policy",
+            name: "propose_refund",
+            arguments: JSON.stringify({
+              orderNumber: fixture.orderNumber,
+              amountCents: 10_000,
+              reason: "Customer requested another refund",
+            }),
+          },
+        ],
+      },
+      {
+        responseId: "response_refunded_final",
+        outputText: "The order already has a refund, so no action was taken.",
+        toolCalls: [],
+      },
+    ]);
+
+    await processSupportRequest(fixture.requestIds[0], model);
+    const [request] = await db
+      .select()
+      .from(supportRequests)
+      .where(eq(supportRequests.id, fixture.requestIds[0]));
+    const calls = await db
+      .select({ toolName: toolCalls.toolName })
+      .from(toolCalls)
+      .innerJoin(agentRuns, eq(agentRuns.id, toolCalls.agentRunId))
+      .where(eq(agentRuns.supportRequestId, fixture.requestIds[0]));
+    const reviews = await db
+      .select()
+      .from(reviewTasks)
+      .where(eq(reviewTasks.supportRequestId, fixture.requestIds[0]));
+
+    expect(request).toMatchObject({
+      status: "refused",
+      outcomeSummary: "The order already has a refund.",
+    });
+    expect(calls.map((call) => call.toolName)).toEqual(["lookup_order", "propose_refund"]);
+    expect(reviews).toHaveLength(0);
+  });
+
   it("refuses an out-of-scope request without answering it or creating a review", async () => {
     const fixture = await createFixture();
     await db
