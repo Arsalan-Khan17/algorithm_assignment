@@ -11,6 +11,7 @@ export function StatusBadge({ status }: { status: string }) {
         "badge-neutral": ["queued", "running", "requested"].includes(status),
       })}
     >
+      <span className="badge-dot" aria-hidden="true" />
       {label}
     </span>
   );

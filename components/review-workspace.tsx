@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { ArrowLeft, Check, ShieldCheck, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { getReviewDetail, listDemoIdentities } from "@/src/repositories/support-repository";
 import type { Serialized } from "@/src/types/serialized";
@@ -16,7 +17,9 @@ function money(cents: number | null, currency: string | null) {
 }
 
 function formatDate(value: string | null) {
-  return value ? new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "—";
+  return value
+    ? new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value))
+    : "—";
 }
 
 export function ReviewWorkspace({ initialDetail, reviewers }: { initialDetail: ReviewDetail; reviewers: Reviewer[] }) {
@@ -116,10 +119,15 @@ export function ReviewWorkspace({ initialDetail, reviewers }: { initialDetail: R
 
   return (
     <>
-      <div className="breadcrumb"><Link href="/">Queue</Link><span>/</span><span>Review</span></div>
-      <header className="review-header">
+      <div className="breadcrumb">
+        <Link href="/"><ArrowLeft size={14} strokeWidth={1.7} aria-hidden="true" />Queue</Link>
+        <span>/</span>
+        <span>Review</span>
+      </div>
+
+      <header className="detail-header">
         <div>
-          <p className="eyebrow">Human approval boundary</p>
+          <p className="section-label">Human approval boundary</p>
           <h1>{detail.review.actionType.replaceAll("_", " ")} request</h1>
           <p className="lede">Order #{detail.request.orderNumber ?? "unlinked"} · {detail.request.customerName}</p>
         </div>
@@ -130,22 +138,22 @@ export function ReviewWorkspace({ initialDetail, reviewers }: { initialDetail: R
 
       <div className="review-grid">
         <div className="review-main">
-          <section className="panel">
-            <p className="eyebrow">Customer request</p>
-            <blockquote>{detail.request.message}</blockquote>
+          <section className="panel customer-request-panel">
+            <p className="section-label">Customer request</p>
+            <blockquote>“{detail.request.message}”</blockquote>
           </section>
 
           <section className="panel">
             <div className="panel-heading">
-              <div><p className="eyebrow">Agent decision</p><h2>Why this reached you</h2></div>
+              <div><p className="section-label">Agent decision</p><h2>Why this reached review</h2></div>
               {finalRun ? <StatusBadge status={finalRun.status} /> : null}
             </div>
-            <p>{detail.review.rationale}</p>
+            <p className="panel-copy">{detail.review.rationale}</p>
             <div className="reason-box"><strong>Escalation reason</strong><span>{detail.review.escalationReason}</span></div>
           </section>
 
           <section className="panel">
-            <p className="eyebrow">Current facts</p>
+            <p className="section-label">Current facts</p>
             <h2>Order and payment</h2>
             <dl className="facts-grid">
               <div><dt>Order state</dt><dd>{detail.request.orderStatus ?? "—"}</dd></div>
@@ -158,12 +166,14 @@ export function ReviewWorkspace({ initialDetail, reviewers }: { initialDetail: R
           </section>
 
           <section className="panel">
-            <p className="eyebrow">Audit trace</p>
-            <h2>Agent tool calls</h2>
-            <ol className="trace-list">
+            <div className="panel-heading">
+              <div><p className="section-label">Audit trace</p><h2>Agent tool calls</h2></div>
+              <span className="panel-count">{detail.toolCalls.length}</span>
+            </div>
+            <ol className="trace-list trace-list-rail">
               {detail.toolCalls.map((call) => (
                 <li key={call.id}>
-                  <div><strong>{call.sequence}. {toolLabel(call.toolName)}</strong><StatusBadge status={call.status} /></div>
+                  <div className="trace-item-heading"><strong>{call.sequence}. {toolLabel(call.toolName)}</strong><StatusBadge status={call.status} /></div>
                   <div className="trace-detail">
                     <div className="trace-block">
                       <span className="trace-block-label">Tool input</span>
@@ -178,27 +188,35 @@ export function ReviewWorkspace({ initialDetail, reviewers }: { initialDetail: R
                   </div>
                 </li>
               ))}
-              {!detail.toolCalls.length ? <li>No tool calls were completed.</li> : null}
+              {!detail.toolCalls.length ? <li className="empty-record">No tool calls were completed</li> : null}
             </ol>
           </section>
         </div>
 
         <aside className="review-sidebar">
-          <section className="panel sticky-panel">
-            <p className="eyebrow">Proposed action</p>
-            <h2>{detail.review.actionType.replaceAll("_", " ")}</h2>
-            <div className="proposal">
-              <StructuredData
-                data={detail.review.proposedPayload}
-                currency={detail.request.currency}
-              />
+          <section className="panel sticky-panel decision-panel">
+            <div className="decision-panel-heading">
+              <span className="decision-icon" aria-hidden="true"><ShieldCheck size={20} strokeWidth={1.7} /></span>
+              <div>
+                <p className="section-label">Proposed action</p>
+                <h2>{detail.review.actionType.replaceAll("_", " ")}</h2>
+              </div>
+              <StatusBadge status={detail.review.status} />
             </div>
 
-            <h3>{detail.review.status === "pending" ? "Live guardrails" : "Post-decision verification"}</h3>
+            <div className="proposal">
+              <StructuredData data={detail.review.proposedPayload} currency={detail.request.currency} />
+            </div>
+
+            <div className="guardrail-heading">
+              <h3>{detail.review.status === "pending" ? "Live guardrails" : "Post-decision verification"}</h3>
+              <span>Checked against current state</span>
+            </div>
             <ul className="check-list">
               {displayedChecks.map((check) => (
                 <li key={check.label} className={check.pass ? "check-pass" : "check-fail"}>
-                  <span aria-hidden="true">{check.pass ? "✓" : "×"}</span>{check.label}
+                  <span aria-hidden="true">{check.pass ? <Check size={13} strokeWidth={2.2} /> : <X size={13} strokeWidth={2.2} />}</span>
+                  {check.label}
                 </li>
               ))}
             </ul>
@@ -208,11 +226,13 @@ export function ReviewWorkspace({ initialDetail, reviewers }: { initialDetail: R
                 <label>Reviewer<select value={reviewerId} onChange={(event) => setReviewerId(event.target.value)}>
                   {reviewers.map((reviewer) => <option key={reviewer.id} value={reviewer.id}>{reviewer.name}</option>)}
                 </select></label>
-                <label>Decision note<textarea value={note} onChange={(event) => setNote(event.target.value)} rows={3} /></label>
+                <label>Decision note<textarea value={note} onChange={(event) => setNote(event.target.value)} rows={3} placeholder="Optional context for the audit trail" /></label>
                 <div className="button-row">
-                  <button className="button button-danger" disabled={working} onClick={() => void decide("reject")}>Reject</button>
+                  <button className="button button-danger" disabled={working} onClick={() => void decide("reject")}>
+                    <X size={16} strokeWidth={1.8} aria-hidden="true" />Reject
+                  </button>
                   <button className="button button-primary" disabled={working || checks.some((check) => !check.pass)} onClick={() => void decide("approve")}>
-                    {working ? "Committing…" : "Approve & execute"}
+                    <Check size={16} strokeWidth={1.8} aria-hidden="true" />{working ? "Committing…" : "Approve and execute"}
                   </button>
                 </div>
               </div>

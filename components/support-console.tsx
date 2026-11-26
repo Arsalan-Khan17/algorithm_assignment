@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { ArrowRight, Bot, CheckCircle2, CircleAlert, Zap } from "lucide-react";
 import type { listDemoIdentities, listSupportRequests } from "@/src/repositories/support-repository";
 import type { Serialized } from "@/src/types/serialized";
 import { conciseDecisionSummary } from "@/src/presentation/decision-summary";
@@ -53,6 +54,17 @@ export function SupportConsole({
     [filter, requests],
   );
 
+  const queueCounts = useMemo(
+    () => ({
+      all: requests.length,
+      needs_review: requests.filter((request) => request.status === "needs_review").length,
+      auto_executed: requests.filter((request) => request.status === "auto_executed").length,
+      completed: requests.filter((request) => request.status === "completed").length,
+      failed: requests.filter((request) => request.status === "failed").length,
+    }),
+    [requests],
+  );
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSubmitting(true);
@@ -83,12 +95,17 @@ export function SupportConsole({
   return (
     <>
       <section className="request-composer" aria-labelledby="new-request-title">
-        <div>
-          <p className="eyebrow">Simulated customer session</p>
-          <h2 id="new-request-title">Submit a support request</h2>
-          <p className="helper-text">
-            Customer identity is trusted server context in production. This selector exists only for the seeded demo.
-          </p>
+        <div className="composer-copy">
+          <span className="composer-icon" aria-hidden="true">
+            <Bot size={20} strokeWidth={1.6} />
+          </span>
+          <div>
+            <p className="section-label">Agent test bench</p>
+            <h2 id="new-request-title">Run a support request</h2>
+            <p className="helper-text">
+              Customer identity is trusted server context in production. This selector exists only for the seeded demo.
+            </p>
+          </div>
         </div>
         <form onSubmit={submit} className="request-form">
           <label>
@@ -106,18 +123,39 @@ export function SupportConsole({
             <input value={message} onChange={(event) => setMessage(event.target.value)} required />
           </label>
           <button className="button button-primary" disabled={submitting || !customerId}>
-            {submitting ? "Processing…" : "Send to agent"}
+            {submitting ? "Processing…" : "Run agent"}
+            {!submitting ? <ArrowRight size={16} strokeWidth={1.7} aria-hidden="true" /> : null}
           </button>
         </form>
         {notice ? <p className="form-notice" role="status">{notice}</p> : null}
       </section>
 
-      <section aria-labelledby="queue-title">
+      <section className="queue-section" aria-labelledby="queue-title">
         <div className="section-heading">
           <div>
-            <p className="eyebrow">Live operations</p>
+            <p className="section-label">Live operations</p>
             <h2 id="queue-title">Decision queue</h2>
           </div>
+          <span className="queue-total">{requests.length} total requests</span>
+        </div>
+
+        <dl className="queue-summary" aria-label="Queue summary">
+          <div className="summary-item summary-review">
+            <dt><CircleAlert size={16} strokeWidth={1.6} aria-hidden="true" />Needs review</dt>
+            <dd>{queueCounts.needs_review}</dd>
+          </div>
+          <div className="summary-item">
+            <dt><Zap size={16} strokeWidth={1.6} aria-hidden="true" />Auto executed</dt>
+            <dd>{queueCounts.auto_executed}</dd>
+          </div>
+          <div className="summary-item">
+            <dt><CheckCircle2 size={16} strokeWidth={1.6} aria-hidden="true" />Resolved</dt>
+            <dd>{queueCounts.completed}</dd>
+          </div>
+        </dl>
+
+        <div className="queue-toolbar">
+          <span className="queue-toolbar-label">Filter requests</span>
           <nav className="filter-tabs" aria-label="Queue filters">
             {filters.map((item) => (
               <button
@@ -125,7 +163,8 @@ export function SupportConsole({
                 className={filter === item ? "filter-active" : ""}
                 onClick={() => setFilter(item)}
               >
-                {item.replaceAll("_", " ")}
+                <span>{item.replaceAll("_", " ")}</span>
+                <span className="filter-count">{queueCounts[item]}</span>
               </button>
             ))}
           </nav>
@@ -146,15 +185,15 @@ export function SupportConsole({
               <tbody>
                 {visibleRequests.map((request) => (
                   <tr key={request.id}>
-                    <td>
-                      <strong>{request.customerName}</strong>
+                    <td className="request-cell">
+                      <strong className="customer-name">{request.customerName}</strong>
                       <span className="cell-secondary">{request.message}</span>
                     </td>
-                    <td>
+                    <td data-label="Order">
                       {request.orderNumber ? `#${request.orderNumber}` : "Not linked"}
                       {request.orderStatus ? <span className="cell-secondary">{request.orderStatus}</span> : null}
                     </td>
-                    <td>
+                    <td className="decision-cell">
                       <StatusBadge status={request.status} />
                       <span className="cell-secondary">
                         {conciseDecisionSummary(
@@ -164,10 +203,11 @@ export function SupportConsole({
                         )}
                       </span>
                     </td>
-                    <td>{formatTime(request.updatedAt)}</td>
+                    <td className="time-cell" data-label="Updated">{formatTime(request.updatedAt)}</td>
                     <td className="action-cell">
-                      <Link href={request.reviewId ? `/reviews/${request.reviewId}` : `/requests/${request.id}`}>
-                        {request.reviewId ? "Review" : "Trace"}
+                      <Link className="row-action" href={request.reviewId ? `/reviews/${request.reviewId}` : `/requests/${request.id}`}>
+                        {request.reviewId ? "Review" : "View trace"}
+                        <ArrowRight size={15} strokeWidth={1.7} aria-hidden="true" />
                       </Link>
                     </td>
                   </tr>
@@ -178,7 +218,7 @@ export function SupportConsole({
         ) : (
           <div className="empty-state">
             <h3>No requests in this view</h3>
-            <p>Submit a seeded scenario above or choose a different status filter.</p>
+            <p>Run a seeded scenario above or choose a different status filter.</p>
           </div>
         )}
       </section>
