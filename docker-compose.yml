@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: support_console
+      POSTGRES_USER: support
+      POSTGRES_PASSWORD: support
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U support -d support_console"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - support-console-postgres:/var/lib/postgresql/data
+
+volumes:
+  support-console-postgres:
