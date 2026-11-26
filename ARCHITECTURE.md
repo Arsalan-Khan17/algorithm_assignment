@@ -26,11 +26,13 @@ This boundary is enforced outside the prompt in three layers:
 
 Prompts improve model behavior but are not an authorization mechanism. There is no public unrestricted refund or cancellation endpoint.
 
+The model's prose is not a terminal outcome either. A run may complete normally only after a tool has moved the persisted request out of `running` into a verified business state such as `needs_review` or `auto_executed`. If the model answers directly, or only performs a lookup and then stops, `src/agent/run-agent.ts` discards that prose as the displayed decision and creates a `manual_review` task with `VERIFIED_SUPPORT_OUTCOME_REQUIRED`. This code-enforced boundary prevents the console from becoming a general chatbot even when the model ignores its instructions; the raw provider output remains available in the agent-run audit record.
+
 Demo customer identity is selected in the UI and sent to the support-request API to make scenarios reproducible. The identity is then fixed on the request and injected into tools server-side; the model never supplies it. In production the same field would come from an authenticated customer session, not request JSON.
 
 ## Agent and tool design
 
-`src/agent/run-agent.ts` implements an explicit Responses API loop. It sends the available tools, receives model-selected function calls, validates each argument, stores the call, executes application code, stores the result, and sends results back to the model. The loop stops on a final response, failure, timeout, or six-turn limit. Parallel tool calls are disabled to keep mutation ordering auditable.
+`src/agent/run-agent.ts` implements an explicit Responses API loop. It sends the available tools, receives model-selected function calls, validates each argument, stores the call, executes application code, stores the result, and sends results back to the model. The loop stops on a final response backed by a verified request state, a safe fallback escalation, failure, timeout, or six-turn limit. Parallel tool calls are disabled to keep mutation ordering auditable.
 
 Tools are deliberately narrow:
 
@@ -70,6 +72,7 @@ Approval repeats all checks against locked current rows. The evidence shown by t
 - **Shipped cancellation:** the command rejects shipped/delivered states and non-null `shipped_at`; the conditional update repeats the predicate.
 - **Stale reviewer:** expected version and row status return `409` with current state.
 - **Model/API failure:** the run is stored as failed and the request becomes a visible manual review. The customer request is persisted before the model is called.
+- **Unsupported/general question:** the model is instructed to call `escalate_to_human`. If it instead returns a general answer without a verified support outcome, the application replaces that answer with a manual-review escalation.
 - **Repeated provider call ID:** `(agent_run_id, provider_call_id)` is unique. A completed result is replayed instead of executing again.
 - **External payment failure:** this assessment uses a local financial ledger. A production provider call would use the action execution ID as its idempotency key and an outbox/reconciliation workflow.
 

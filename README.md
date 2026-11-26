@@ -5,6 +5,7 @@ A human-centered support dashboard backed by a real AI tool-calling loop, determ
 ## What it demonstrates
 
 - The LLM chooses which order/refund/cancellation/escalation tools to call over multiple turns.
+- General-chat answers are not accepted as support outcomes; unsupported requests are escalated by tool or by a code-enforced terminal-state boundary.
 - Refunds always require human approval.
 - Only untouched pending orders with authorized payments can be cancelled automatically.
 - Guardrails are enforced in domain code and reinforced by database constraints.

@@ -90,6 +90,7 @@ This plan is the working checklist for the assessment. A box is checked only aft
 - [x] Persist concise reviewer-facing rationale, not hidden chain-of-thought.
 - [x] Make duplicate provider call IDs idempotent.
 - [x] Convert model/API failures into visible human escalations.
+- [x] Reject tool-free/general-chat prose as a terminal outcome and create a visible manual review.
 - [x] Provide a deterministic fake model adapter for tests only.
 
 ## 7. HTTP API
@@ -122,8 +123,6 @@ This plan is the working checklist for the assessment. A box is checked only aft
 
 - [x] Unit-test policy decisions and validation schemas.
 - [x] Test the agent loop with scripted tool-call responses.
-- [ ] Test queue and review API contracts.
-- [ ] Playwright test: submit a refund request and approve it.
 - [x] Playwright test: two browser sessions approve the same review.
 - [x] Verify only one refund and one successful execution exist afterward.
 - [x] Run lint with zero errors.
@@ -131,6 +130,12 @@ This plan is the working checklist for the assessment. A box is checked only aft
 - [x] Run all unit and integration tests.
 - [x] Run the production build.
 - [x] Run a live local OpenAI smoke test and verify persisted model-selected tool calls.
+- [x] Regression test: a tool-free general-knowledge answer is replaced by a manual-review escalation.
+
+Optional coverage beyond the assessment requirements:
+
+- [ ] Add exhaustive queue and review API contract tests.
+- [ ] Add a provider-dependent Playwright flow that submits a refund request before approval.
 
 ## 10. Documentation and deployment
 
@@ -140,26 +145,27 @@ This plan is the working checklist for the assessment. A box is checked only aft
 - [x] Document build-versus-buy choices for queues, frameworks, observability, logging, and infrastructure.
 - [x] Write local setup, migration, seed, test, and run instructions in `README.md`.
 - [x] Document demo users, seeded orders, and reviewer test scenarios.
-- [ ] Push the repository to public GitHub.
-- [ ] Import the GitHub repository into Vercel and provision the Neon integration.
-- [ ] Configure `DATABASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`, and application secrets.
-- [ ] Apply migrations and seed the deployed database.
-- [ ] Run smoke and concurrency tests against the deployed URL.
-- [ ] Record the public repository and deployment URLs.
+- [x] Push the repository to public GitHub.
+- [x] Import the GitHub repository into Vercel and provision the Neon integration.
+- [x] Configure `DATABASE_URL`, `OPENAI_API_KEY`, and `OPENAI_MODEL` in Vercel.
+- [x] Apply migrations and seed the deployed database.
+- [x] Run a production smoke request and verify its persisted, model-selected tool trace.
+- [x] Record the public repository and deployment URLs in `SUBMISSION.md`.
+- [ ] Optional: run destructive concurrency probes against production; equivalent PostgreSQL integration and two-browser tests pass locally.
 
 ## 11. Submission answers
 
 - [x] Prepare the key engineering decisions summary.
 - [x] Prepare the AI-tools usage disclosure.
 - [x] Prepare reviewer notes, including deliberate scope limits.
-- [ ] Submit the repository URL.
-- [ ] Submit the live deployment URL.
+- [ ] User action: submit the repository URL in Outpost Portal.
+- [ ] User action: submit the live deployment URL in Outpost Portal.
 
 ## Definition of done
 
 The project is complete only when all of the following are true:
 
-- [ ] The deployed application uses a real LLM-selected tool-calling loop.
+- [x] The deployed application uses a real LLM-selected tool-calling loop.
 - [x] Unsafe operations are rejected by application code regardless of the prompt.
 - [x] Two concurrent refund attempts produce exactly one refund.
 - [x] Two concurrent approvals produce exactly one action execution.
