@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { getReviewDetail, listDemoIdentities } from "@/src/repositories/support-repository";
 import type { Serialized } from "@/src/types/serialized";
 import { StatusBadge } from "./status-badge";
+import { StructuredData, toolLabel } from "./structured-data";
 
 type ReviewDetail = NonNullable<Serialized<Awaited<ReturnType<typeof getReviewDetail>>>>;
 type Reviewer = Serialized<Awaited<ReturnType<typeof listDemoIdentities>>>["reviewers"][number];
@@ -95,7 +96,6 @@ export function ReviewWorkspace({ initialDetail, reviewers }: { initialDetail: R
     }
   }
 
-  const proposed = detail.review.proposedPayload as Record<string, unknown>;
   const finalRun = detail.agentRuns[0];
   const displayedChecks =
     detail.review.status === "pending"
@@ -166,8 +166,19 @@ export function ReviewWorkspace({ initialDetail, reviewers }: { initialDetail: R
             <ol className="trace-list">
               {detail.toolCalls.map((call) => (
                 <li key={call.id}>
-                  <div><strong>{call.sequence}. {call.toolName}</strong><StatusBadge status={call.status} /></div>
-                  <code>{JSON.stringify(call.arguments)}</code>
+                  <div><strong>{call.sequence}. {toolLabel(call.toolName)}</strong><StatusBadge status={call.status} /></div>
+                  <div className="trace-detail">
+                    <div className="trace-block">
+                      <span className="trace-block-label">Tool input</span>
+                      <StructuredData data={call.arguments} currency={detail.request.currency} nested />
+                    </div>
+                    {call.result ? (
+                      <div className="trace-block">
+                        <span className="trace-block-label">Tool result</span>
+                        <StructuredData data={call.result} currency={detail.request.currency} nested />
+                      </div>
+                    ) : null}
+                  </div>
                 </li>
               ))}
               {!detail.toolCalls.length ? <li>No tool calls were completed.</li> : null}
@@ -179,7 +190,12 @@ export function ReviewWorkspace({ initialDetail, reviewers }: { initialDetail: R
           <section className="panel sticky-panel">
             <p className="eyebrow">Proposed action</p>
             <h2>{detail.review.actionType.replaceAll("_", " ")}</h2>
-            <pre className="proposal">{JSON.stringify(proposed, null, 2)}</pre>
+            <div className="proposal">
+              <StructuredData
+                data={detail.review.proposedPayload}
+                currency={detail.request.currency}
+              />
+            </div>
 
             <h3>{detail.review.status === "pending" ? "Live guardrails" : "Post-decision verification"}</h3>
             <ul className="check-list">

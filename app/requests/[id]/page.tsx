@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { z } from "zod";
 import { StatusBadge } from "@/components/status-badge";
+import { StructuredData, toolLabel } from "@/components/structured-data";
 import { getSupportRequestDetail } from "@/src/repositories/support-repository";
 
 export const dynamic = "force-dynamic";
@@ -27,13 +28,40 @@ export default async function RequestTracePage({ params }: { params: Promise<{ i
       <section className="panel">
         <p className="eyebrow">Agent runs</p>
         <ol className="trace-list">
-          {detail.agentRuns.map((run) => <li key={run.id}><div><strong>{run.model}</strong><StatusBadge status={run.status} /></div><span>{run.errorMessage ?? JSON.stringify(run.finalDecision)}</span></li>)}
+          {detail.agentRuns.map((run) => (
+            <li key={run.id}>
+              <div><strong>{run.model}</strong><StatusBadge status={run.status} /></div>
+              {run.errorMessage ? <p className="trace-error">{run.errorMessage}</p> : null}
+              {run.finalDecision ? (
+                <StructuredData data={run.finalDecision} currency={detail.request.currency} />
+              ) : null}
+            </li>
+          ))}
+          {!detail.agentRuns.length ? <li>No agent run has been recorded yet.</li> : null}
         </ol>
       </section>
       <section className="panel">
         <p className="eyebrow">Tool calls</p>
         <ol className="trace-list">
-          {detail.toolCalls.map((call) => <li key={call.id}><div><strong>{call.sequence}. {call.toolName}</strong><StatusBadge status={call.status} /></div><code>{JSON.stringify(call.arguments)}</code><span>{call.errorMessage}</span></li>)}
+          {detail.toolCalls.map((call) => (
+            <li key={call.id}>
+              <div><strong>{call.sequence}. {toolLabel(call.toolName)}</strong><StatusBadge status={call.status} /></div>
+              <div className="trace-detail">
+                <div className="trace-block">
+                  <span className="trace-block-label">Tool input</span>
+                  <StructuredData data={call.arguments} currency={detail.request.currency} nested />
+                </div>
+                {call.result ? (
+                  <div className="trace-block">
+                    <span className="trace-block-label">Tool result</span>
+                    <StructuredData data={call.result} currency={detail.request.currency} nested />
+                  </div>
+                ) : null}
+              </div>
+              {call.errorMessage ? <p className="trace-error">{call.errorMessage}</p> : null}
+            </li>
+          ))}
+          {!detail.toolCalls.length ? <li>No tool calls have been recorded yet.</li> : null}
         </ol>
       </section>
     </main>
